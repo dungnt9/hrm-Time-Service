@@ -280,15 +280,21 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
         var cached = await db.StringGetAsync($"attendance:{employeeId}:{date:yyyy-MM-dd}");
         if (cached.HasValue)
         {
-            var cachedData = JsonSerializer.Deserialize<Dictionary<string, object>>(cached.ToString());
-            if (cachedData != null)
+            using var doc = JsonDocument.Parse(cached.ToString());
+            var root = doc.RootElement;
+            if (root.ValueKind == JsonValueKind.Object)
             {
+                var isCheckedIn = root.TryGetProperty("IsCheckedIn", out var checkedInElem) && checkedInElem.GetBoolean();
+                var isCheckedOut = root.TryGetProperty("IsCheckedOut", out var checkedOutElem) && checkedOutElem.GetBoolean();
+                var checkInTime = root.TryGetProperty("CheckInTime", out var checkInElem) ? checkInElem.GetString() ?? "" : "";
+                var checkOutTime = root.TryGetProperty("CheckOutTime", out var checkOutElem) ? checkOutElem.GetString() ?? "" : "";
+
                 return new AttendanceStatusResponse
                 {
-                    IsCheckedIn = cachedData.ContainsKey("IsCheckedIn") && (bool)cachedData["IsCheckedIn"],
-                    IsCheckedOut = cachedData.ContainsKey("IsCheckedOut") && (bool)cachedData["IsCheckedOut"],
-                    CheckInTime = cachedData.ContainsKey("CheckInTime") ? cachedData["CheckInTime"]?.ToString() ?? "" : "",
-                    CheckOutTime = cachedData.ContainsKey("CheckOutTime") ? cachedData["CheckOutTime"]?.ToString() ?? "" : ""
+                    IsCheckedIn = isCheckedIn,
+                    IsCheckedOut = isCheckedOut,
+                    CheckInTime = checkInTime,
+                    CheckOutTime = checkOutTime
                 };
             }
         }
