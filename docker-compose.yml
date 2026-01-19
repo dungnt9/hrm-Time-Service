@@ -1,0 +1,57 @@
+# =====================================================
+# Time Service - Docker Compose
+# =====================================================
+#
+# Yêu cầu:
+#   - Infrastructure phải đang chạy (hrm-deployment/docker-compose.infra.yml)
+#   - Employee Service phải đang chạy (gRPC dependency)
+#
+# Chạy service:
+#   docker compose up -d --build
+#
+# Xem logs:
+#   docker compose logs -f
+#
+# Dừng service:
+#   docker compose down
+#
+# =====================================================
+
+services:
+  time-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hrm-time-service
+    restart: unless-stopped
+    env_file:
+      - ../hrm-deployment/.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: "http://+:8080;http://+:8081"
+      ConnectionStrings__DefaultConnection: ${TIME_DB_CONNECTION}
+      ConnectionStrings__Redis: "${REDIS_HOST}:${REDIS_PORT}"
+      RabbitMQ__Host: ${RABBITMQ_HOST}
+      RabbitMQ__Port: ${RABBITMQ_PORT}
+      RabbitMQ__Username: ${RABBITMQ_USER}
+      RabbitMQ__Password: ${RABBITMQ_PASSWORD}
+      GrpcServices__EmployeeService: "http://hrm-employee-service:8081"
+      Keycloak__Authority: ${KEYCLOAK_AUTHORITY}
+      Keycloak__Audience: hrm-api
+      Keycloak__ClientId: ${KEYCLOAK_CLIENT_ID}
+      Keycloak__ClientSecret: ${KEYCLOAK_CLIENT_SECRET}
+      Keycloak__RequireHttps: "false"
+    ports:
+      - "${TIME_SERVICE_HTTP_PORT:-5003}:8080"
+      - "${TIME_SERVICE_GRPC_PORT:-5004}:8081"
+    networks:
+      - hrm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  hrm-network:
+    external: true

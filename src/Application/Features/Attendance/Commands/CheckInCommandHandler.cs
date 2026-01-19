@@ -1,6 +1,7 @@
 using MediatR;
 using TimeService.Application.Common.Abstractions.Repositories;
 using TimeService.Domain.Entities;
+using AttendanceEntity = TimeService.Domain.Entities.Attendance;
 
 namespace TimeService.Application.Features.Attendance.Commands;
 
@@ -29,7 +30,7 @@ public class CheckInCommandHandler : IRequestHandler<CheckInCommand, CheckInResu
         }
 
         var now = DateTime.UtcNow;
-        var attendance = existing ?? new Attendance
+        var attendance = existing ?? new AttendanceEntity
         {
             Id = Guid.NewGuid(),
             EmployeeId = request.EmployeeId,
@@ -41,8 +42,8 @@ public class CheckInCommandHandler : IRequestHandler<CheckInCommand, CheckInResu
         attendance.CheckInStatus = DetermineCheckInStatus(now);
         attendance.CheckInLatitude = request.Latitude;
         attendance.CheckInLongitude = request.Longitude;
-        attendance.DeviceInfo = request.DeviceInfo;
-        attendance.IpAddress = request.IpAddress;
+        attendance.CheckInDeviceInfo = request.DeviceInfo;
+        attendance.CheckInIpAddress = request.IpAddress;
         attendance.UpdatedAt = now;
 
         if (existing == null)
