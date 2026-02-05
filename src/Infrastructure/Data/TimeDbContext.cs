@@ -17,6 +17,7 @@ public class TimeDbContext : DbContext
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<LeavePolicy> LeavePolicies => Set<LeavePolicy>();
     public DbSet<ApprovalHistory> ApprovalHistories => Set<ApprovalHistory>();
+    public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,6 +98,15 @@ public class TimeDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.LeaveRequestId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // OvertimeRequest
+        modelBuilder.Entity<OvertimeRequest>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.EmployeeId);
+            entity.HasIndex(e => e.Status);
+            entity.Property(e => e.Status).HasConversion<string>();
         });
 
         // Seed data

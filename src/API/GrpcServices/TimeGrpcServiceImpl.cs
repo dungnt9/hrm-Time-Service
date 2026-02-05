@@ -745,4 +745,242 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             UpdatedAt = r.UpdatedAt.ToString("O")
         };
     }
+
+    // Overtime Methods
+    public override async Task<OvertimeRequestResponse> CreateOvertimeRequest(CreateOvertimeRequestRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.EmployeeId, out var employeeId))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        if (!DateTime.TryParse(request.Date, out var date))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        if (!TimeSpan.TryParse(request.StartTime, out var startTime) ||
+            !TimeSpan.TryParse(request.EndTime, out var endTime))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        var overtimeRequest = new OvertimeRequest
+        {
+            Id = Guid.NewGuid(),
+            EmployeeId = employeeId,
+            Date = date.Date,
+            StartTime = startTime,
+            EndTime = endTime,
+            TotalMinutes = request.TotalMinutes,
+            Reason = request.Reason,
+            Status = OvertimeStatus.Pending,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _context.OvertimeRequests.Add(overtimeRequest);
+
+        // Add outbox message
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = "overtime_request_created",
+            Payload = JsonSerializer.Serialize(new
+            {
+                OvertimeRequestId = overtimeRequest.Id,
+                EmployeeId = employeeId,
+                Date = date,
+                TotalMinutes = request.TotalMinutes
+            }),
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.OutboxMessages.Add(outboxMessage);
+
+        await _context.SaveChangesAsync();
+
+        return await MapToOvertimeResponse(overtimeRequest);
+    }
+
+    public override async Task<OvertimeRequestsResponse> GetOvertimeRequests(GetOvertimeRequestsRequest request, ServerCallContext context)
+    {
+        var query = _context.OvertimeRequests.AsQueryable();
+
+        if (!string.IsNullOrEmpty(request.EmployeeId) && Guid.TryParse(request.EmployeeId, out var employeeId))
+        {
+            query = query.Where(r => r.EmployeeId == employeeId);
+        }
+
+        if (!string.IsNullOrEmpty(request.Status) && Enum.TryParse<OvertimeStatus>(request.Status, true, out var status))
+        {
+            query = query.Where(r => r.Status == status);
+        }
+
+        if (!string.IsNullOrEmpty(request.StartDate) && DateTime.TryParse(request.StartDate, out var startDate))
+        {
+            query = query.Where(r => r.Date >= startDate.Date);
+        }
+
+        if (!string.IsNullOrEmpty(request.EndDate) && DateTime.TryParse(request.EndDate, out var endDate))
+        {
+            query = query.Where(r => r.Date <= endDate.Date);
+        }
+
+        var totalCount = await query.CountAsync();
+        var page = request.Page > 0 ? request.Page : 1;
+        var pageSize = request.PageSize > 0 ? request.PageSize : 10;
+
+        var requests = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var response = new OvertimeRequestsResponse
+        {
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+
+        foreach (var r in requests)
+        {
+            response.Requests.Add(await MapToOvertimeResponse(r));
+        }
+
+        return response;
+    }
+
+    public override async Task<OvertimeRequestResponse> GetOvertimeRequestDetail(GetOvertimeRequestDetailRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.OvertimeRequestId, out var overtimeRequestId))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        var overtimeRequest = await _context.OvertimeRequests.FindAsync(overtimeRequestId);
+        if (overtimeRequest == null)
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        return await MapToOvertimeResponse(overtimeRequest);
+    }
+
+    public override async Task<OvertimeRequestResponse> ApproveOvertimeRequest(ApproveOvertimeRequestRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.OvertimeRequestId, out var overtimeRequestId) ||
+            !Guid.TryParse(request.ApproverId, out var approverId))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        var overtimeRequest = await _context.OvertimeRequests.FindAsync(overtimeRequestId);
+        if (overtimeRequest == null)
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        overtimeRequest.Status = OvertimeStatus.Approved;
+        overtimeRequest.ApproverId = approverId;
+        overtimeRequest.ApprovedAt = DateTime.UtcNow;
+        overtimeRequest.ApproverComment = request.Comment;
+        overtimeRequest.UpdatedAt = DateTime.UtcNow;
+
+        // Add outbox message
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = "overtime_request_approved",
+            Payload = JsonSerializer.Serialize(new
+            {
+                OvertimeRequestId = overtimeRequest.Id,
+                EmployeeId = overtimeRequest.EmployeeId,
+                ApproverId = approverId,
+                ApprovedAt = DateTime.UtcNow
+            }),
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.OutboxMessages.Add(outboxMessage);
+
+        await _context.SaveChangesAsync();
+
+        return await MapToOvertimeResponse(overtimeRequest);
+    }
+
+    public override async Task<OvertimeRequestResponse> RejectOvertimeRequest(RejectOvertimeRequestRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.OvertimeRequestId, out var overtimeRequestId) ||
+            !Guid.TryParse(request.ApproverId, out var approverId))
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        var overtimeRequest = await _context.OvertimeRequests.FindAsync(overtimeRequestId);
+        if (overtimeRequest == null)
+        {
+            return new OvertimeRequestResponse();
+        }
+
+        overtimeRequest.Status = OvertimeStatus.Rejected;
+        overtimeRequest.ApproverId = approverId;
+        overtimeRequest.ApproverComment = request.Reason;
+        overtimeRequest.UpdatedAt = DateTime.UtcNow;
+
+        // Add outbox message
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            EventType = "overtime_request_rejected",
+            Payload = JsonSerializer.Serialize(new
+            {
+                OvertimeRequestId = overtimeRequest.Id,
+                EmployeeId = overtimeRequest.EmployeeId,
+                ApproverId = approverId,
+                Reason = request.Reason
+            }),
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.OutboxMessages.Add(outboxMessage);
+
+        await _context.SaveChangesAsync();
+
+        return await MapToOvertimeResponse(overtimeRequest);
+    }
+
+    private async Task<OvertimeRequestResponse> MapToOvertimeResponse(OvertimeRequest r)
+    {
+        var employeeName = "";
+        var approverName = "";
+        try
+        {
+            var employee = await _employeeClient.GetEmployeeAsync(new GetEmployeeRequest { EmployeeId = r.EmployeeId.ToString() });
+            employeeName = $"{employee.FirstName} {employee.LastName}";
+            if (r.ApproverId.HasValue)
+            {
+                var approver = await _employeeClient.GetEmployeeAsync(new GetEmployeeRequest { EmployeeId = r.ApproverId.Value.ToString() });
+                approverName = $"{approver.FirstName} {approver.LastName}";
+            }
+        }
+        catch { }
+
+        return new OvertimeRequestResponse
+        {
+            Id = r.Id.ToString(),
+            EmployeeId = r.EmployeeId.ToString(),
+            EmployeeName = employeeName,
+            Date = r.Date.ToString("yyyy-MM-dd"),
+            StartTime = r.StartTime.ToString(@"hh\:mm"),
+            EndTime = r.EndTime.ToString(@"hh\:mm"),
+            TotalMinutes = r.TotalMinutes,
+            Reason = r.Reason ?? "",
+            Status = r.Status.ToString().ToLower(),
+            ApproverId = r.ApproverId?.ToString() ?? "",
+            ApproverName = approverName,
+            ApproverComment = r.ApproverComment ?? "",
+            ApprovedAt = r.ApprovedAt?.ToString("O") ?? "",
+            CreatedAt = r.CreatedAt.ToString("O"),
+            UpdatedAt = r.UpdatedAt.ToString("O")
+        };
+    }
 }
