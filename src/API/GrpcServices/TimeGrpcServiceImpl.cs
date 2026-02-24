@@ -209,12 +209,14 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
 
         if (!string.IsNullOrEmpty(request.StartDate) && DateTime.TryParse(request.StartDate, out var startDate))
         {
-            query = query.Where(a => a.Date >= startDate.Date);
+            var startDateUtc = DateTime.SpecifyKind(startDate.Date, DateTimeKind.Utc);
+            query = query.Where(a => a.Date >= startDateUtc);
         }
 
         if (!string.IsNullOrEmpty(request.EndDate) && DateTime.TryParse(request.EndDate, out var endDate))
         {
-            query = query.Where(a => a.Date <= endDate.Date);
+            var endDateUtc = DateTime.SpecifyKind(endDate.Date, DateTimeKind.Utc);
+            query = query.Where(a => a.Date <= endDateUtc);
         }
 
         var totalCount = await query.CountAsync();
@@ -273,7 +275,9 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             return new AttendanceStatusResponse();
         }
 
-        var date = string.IsNullOrEmpty(request.Date) ? DateTime.UtcNow.Date : DateTime.Parse(request.Date).Date;
+        var date = string.IsNullOrEmpty(request.Date)
+            ? DateTime.UtcNow.Date
+            : DateTime.SpecifyKind(DateTime.Parse(request.Date).Date, DateTimeKind.Utc);
 
         // Try cache first
         var db = _redis.GetDatabase();
@@ -330,11 +334,13 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             return new LeaveRequestResponse();
         }
 
-        if (!DateTime.TryParse(request.StartDate, out var startDate) ||
-            !DateTime.TryParse(request.EndDate, out var endDate))
+        if (!DateTime.TryParse(request.StartDate, out var startDateRaw) ||
+            !DateTime.TryParse(request.EndDate, out var endDateRaw))
         {
             return new LeaveRequestResponse();
         }
+        var startDate = DateTime.SpecifyKind(startDateRaw.Date, DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(endDateRaw.Date, DateTimeKind.Utc);
 
         if (!Enum.TryParse<LeaveType>(request.LeaveType, true, out var leaveType))
         {
@@ -346,15 +352,15 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             approverType = ApproverType.Manager;
         }
 
-        var totalDays = (int)(endDate.Date - startDate.Date).TotalDays + 1;
+        var totalDays = (int)(endDate - startDate).TotalDays + 1;
 
         var leaveRequest = new LeaveRequest
         {
             Id = Guid.NewGuid(),
             EmployeeId = employeeId,
             LeaveType = leaveType,
-            StartDate = startDate.Date,
-            EndDate = endDate.Date,
+            StartDate = startDate,
+            EndDate = endDate,
             TotalDays = totalDays,
             Reason = request.Reason,
             Status = LeaveRequestStatus.Pending,
@@ -670,7 +676,9 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             return new ShiftResponse();
         }
 
-        var date = string.IsNullOrEmpty(request.Date) ? DateTime.UtcNow.Date : DateTime.Parse(request.Date).Date;
+        var date = string.IsNullOrEmpty(request.Date)
+            ? DateTime.UtcNow.Date
+            : DateTime.SpecifyKind(DateTime.Parse(request.Date).Date, DateTimeKind.Utc);
 
         var shift = await GetEmployeeShiftInternal(employeeId, date);
 
@@ -754,10 +762,11 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
             return new OvertimeRequestResponse();
         }
 
-        if (!DateTime.TryParse(request.Date, out var date))
+        if (!DateTime.TryParse(request.Date, out var dateRaw))
         {
             return new OvertimeRequestResponse();
         }
+        var date = DateTime.SpecifyKind(dateRaw.Date, DateTimeKind.Utc);
 
         if (!TimeSpan.TryParse(request.StartTime, out var startTime) ||
             !TimeSpan.TryParse(request.EndTime, out var endTime))
@@ -769,7 +778,7 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
         {
             Id = Guid.NewGuid(),
             EmployeeId = employeeId,
-            Date = date.Date,
+            Date = date,
             StartTime = startTime,
             EndTime = endTime,
             TotalMinutes = request.TotalMinutes,
@@ -818,12 +827,14 @@ public class TimeGrpcServiceImpl : TimeGrpc.TimeGrpcBase
 
         if (!string.IsNullOrEmpty(request.StartDate) && DateTime.TryParse(request.StartDate, out var startDate))
         {
-            query = query.Where(r => r.Date >= startDate.Date);
+            var startDateUtc = DateTime.SpecifyKind(startDate.Date, DateTimeKind.Utc);
+            query = query.Where(r => r.Date >= startDateUtc);
         }
 
         if (!string.IsNullOrEmpty(request.EndDate) && DateTime.TryParse(request.EndDate, out var endDate))
         {
-            query = query.Where(r => r.Date <= endDate.Date);
+            var endDateUtc = DateTime.SpecifyKind(endDate.Date, DateTimeKind.Utc);
+            query = query.Where(r => r.Date <= endDateUtc);
         }
 
         var totalCount = await query.CountAsync();
